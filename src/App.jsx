@@ -132,8 +132,7 @@ async function generateWithGemini(
   const selectedModel = model || "gemini-2.5-flash-preview-09-2025";
 
   // Simplest Quick Fix: Prepend a CORS proxy to bypass browser restrictions
-  const baseUrl = `https://generativelanguage.googleapis.com/v1beta/models/${selectedModel}:generateContent?key=${apiKey}`;
-  const url = `https://api.allorigins.win/raw?url=${encodeURIComponent(baseUrl)}`;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${selectedModel}:generateContent?key=${apiKey}`;
 
   const payload = {
     contents: [{ parts: [{ text: prompt }] }],
