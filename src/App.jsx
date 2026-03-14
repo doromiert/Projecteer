@@ -64,6 +64,7 @@ import {
   PenTool,
   Coffee,
   MessageSquare,
+  Menu,
 } from "lucide-react";
 
 // Expanded Icon Library for the Picker
@@ -274,9 +275,14 @@ const EditableField = ({
 };
 
 export default function App() {
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [overviewPrompt, setOverviewPrompt] = useState(
     "You are a systems engineer.",
   );
+  const handleTabClick = (id) => {
+    setActiveTabId(id);
+    setIsSidebarOpen(false);
+  };
   const fileInputRef = useRef(null);
 
   const [apiKey, setApiKey] = useState(
@@ -917,13 +923,29 @@ export default function App() {
     );
   };
 
+  useEffect(() => {
+    const handleResize = () => {
+      // 768px is the default Tailwind 'md' breakpoint
+      if (window.innerWidth >= 768) {
+        setIsSidebarOpen(true);
+      } else {
+        setIsSidebarOpen(false);
+      }
+    };
+
+    window.addEventListener("resize", handleResize);
+
+    // Clean up listener on unmount
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
   const TitleIcon = AVAILABLE_ICONS[data.title.icon] || Settings;
   const currentModelData = availableModels.find(
     (m) => m.name === selectedModel,
   );
 
   return (
-    <div className="min-h-screen bg-gray-950 text-gray-200 font-sans flex md:flex-row selection:bg-emerald-900/50">
+    <div className="h-screen bg-gray-950 text-gray-200 font-sans flex flex-col md:flex-row overflow-hidden selection:bg-emerald-900/50">
       {/* Hidden File Input for JSON Upload */}
       <input
         type="file"
@@ -933,8 +955,36 @@ export default function App() {
         className="hidden"
       />
 
-      {/* Sidebar Header */}
-      <div className="w-48 md:w-64 bg-gray-900 border-r border-gray-800 flex flex-col shrink-0 overflow-y-auto">
+      {/* Mobile Header */}
+      <div className="md:!hidden flex items-center justify-between bg-gray-900 border-b border-gray-800 p-4 shrink-0 z-40 relative">
+        <div className="flex items-center gap-3 font-bold text-gray-100">
+          <TitleIcon className="w-5 h-5 text-emerald-500" />
+          <span className="truncate max-w-[200px]">{data.title.text}</span>
+        </div>
+        <button
+          onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+          className="p-1 text-gray-400 hover:text-white transition-colors"
+        >
+          {isSidebarOpen ? (
+            <X className="w-6 h-6" />
+          ) : (
+            <Menu className="w-6 h-6" />
+          )}
+        </button>
+      </div>
+
+      {/* Mobile Sidebar Overlay */}
+      {isSidebarOpen && (
+        <div
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 md:hidden"
+          onClick={() => setIsSidebarOpen(false)}
+        />
+      )}
+
+      {/* Responsive Sidebar */}
+      <div
+        className={`fixed inset-y-0 left-0 z-50 w-72 md:w-64 bg-gray-900 border-r border-gray-800  max-h-lvh flex flex-col shrink-0 overflow-y-auto transition-transform duration-300 md:relative md:translate-x-0 ${isSidebarOpen ? "translate-x-0" : "-translate-x-full"}`}
+      >
         <div className="p-6 border-b border-gray-800">
           <h1 className="text-2xl font-bold tracking-tighter text-gray-100 flex items-center gap-2">
             <button
@@ -1044,7 +1094,7 @@ export default function App() {
       {/* Main Content */}
       <div className="flex flex-col w-full h-screen">
         {/* Main Scrollable Area */}
-        <div className="flex-1 overflow-y-auto bg-gray-950 relative">
+        <div className="ml-0 md:ml-72 flex-1 overflow-y-auto bg-gray-950 relative">
           <div className="max-w-4xl mx-auto p-6 md:p-8">
             {activeTabId === "overview"
               ? renderOverview()
