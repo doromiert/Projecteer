@@ -202,7 +202,7 @@ const defaultData = {
   },
   overviewPrompt: "You are a systems engineer.",
   promptTemplate:
-    'Review this project feature: "$feature - $content" within the context of $project.\n\nProvide 1 advanced technical alternative, optimization, or improvement for this specific $section feature in the context of modern system architecture. Output ONLY a valid JSON object.',
+    'Review this project feature: "$feature - $content" within the context of $project.\n\nProvide 1 advanced technical alternative, optimization, or improvement for this specific $section feature in the context of $dirtitle $dirdesc. Output ONLY a valid JSON object.',
   sections: [],
 };
 
@@ -549,7 +549,9 @@ export default function App() {
         .replace(/\$feature/g, featureTitle)
         .replace(/\$content/g, featureContent)
         .replace(/\$project/g, data.title.text)
-        .replace(/\$section/g, sectionTitle);
+        .replace(/\$section/g, sectionTitle)
+        .replace(/\$dirdesc/g, data.directive.description)
+        .replace(/\$dirtitle/g, data.directive.title);
 
       const aiObject = await generateWithGemini(
         apiKey,
@@ -710,7 +712,9 @@ export default function App() {
               <span className="text-indigo-400/70">$project</span>,{" "}
               <span className="text-indigo-400/70">$section</span>,{" "}
               <span className="text-indigo-400/70">$feature</span>,{" "}
-              <span className="text-indigo-400/70">$content</span>
+              <span className="text-indigo-400/70">$content</span>,{" "}
+              <span className="text-indigo-400/70">$dirtitle</span>,{" "}
+              <span className="text-indigo-400/70">$dirdesc</span>
             </div>
           </div>
           <div className="p-4 rounded-lg border border-indigo-500/30 bg-indigo-950/30 relative group">
