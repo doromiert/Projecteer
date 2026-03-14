@@ -520,13 +520,26 @@ export default function App() {
   ) => {
     if (!apiKey) return setShowApiModal(true);
 
-    setGeminiModal({
-      isOpen: true,
-      title: `✨ Generating AI Alternative...`,
-      response: "",
+    const tempId = `ai_${Date.now()}`;
+
+    // Inject loading placeholder immediately
+    const loadingItem = {
+      id: tempId,
+      title: "Generating AI Alternative...",
+      content: "Analyzing architecture...",
+      isAiOption: true,
       isLoading: true,
-      error: "",
-    });
+    };
+
+    setData((prev) => ({
+      ...prev,
+      sections: prev.sections.map((sec) =>
+        sec.id === sectionId
+          ? { ...sec, items: [...sec.items, loadingItem] }
+          : sec,
+      ),
+    }));
+
     try {
       const template = data.promptTemplate || defaultData.promptTemplate;
       const sectionTitle =
@@ -546,34 +559,49 @@ export default function App() {
         true,
       );
 
-      const newItem = {
-        id: `ai_${Date.now()}`,
-        title: aiObject.title,
-        content: aiObject.content,
-        isRecommended: false,
-        isAiOption: true,
-      };
-
+      // Replace loading placeholder with success data
       setData((prev) => ({
         ...prev,
         sections: prev.sections.map((sec) =>
           sec.id === sectionId
-            ? { ...sec, items: [...sec.items, newItem] }
+            ? {
+                ...sec,
+                items: sec.items.map((item) =>
+                  item.id === tempId
+                    ? {
+                        ...item,
+                        title: aiObject.title,
+                        content: aiObject.content,
+                        isLoading: false,
+                      }
+                    : item,
+                ),
+              }
             : sec,
         ),
       }));
-      setGeminiModal({
-        isOpen: false,
-        title: "",
-        response: "",
-        isLoading: false,
-        error: "",
-      });
     } catch (error) {
-      setGeminiModal((prev) => ({
+      // Replace loading placeholder with error state
+      setData((prev) => ({
         ...prev,
-        isLoading: false,
-        error: "Failed to generate inline item. " + error.message,
+        sections: prev.sections.map((sec) =>
+          sec.id === sectionId
+            ? {
+                ...sec,
+                items: sec.items.map((item) =>
+                  item.id === tempId
+                    ? {
+                        ...item,
+                        title: "Generation Failed",
+                        content: error.message,
+                        isLoading: false,
+                        error: true,
+                      }
+                    : item,
+                ),
+              }
+            : sec,
+        ),
       }));
     }
   };
@@ -756,88 +784,123 @@ export default function App() {
         </div>
 
         <div className="grid grid-cols-1 gap-4">
-          {section.items.map((item) => (
-            <div
-              key={item.id}
-              className={`p-5 rounded-lg border relative group transition-colors ${item.isAiOption ? "border-indigo-500/50 bg-indigo-950/20" : item.isRecommended ? "border-emerald-500/30 bg-emerald-950/10" : "border-gray-800 bg-gray-900"}`}
-            >
-              {item.isAiOption && (
-                <div className="mb-3">
-                  <span className="bg-indigo-900/50 border border-indigo-500/30 text-indigo-300 text-[10px] uppercase font-bold tracking-wider px-2 py-1 rounded inline-flex items-center gap-1">
-                    <Sparkles className="w-3 h-3" /> AI Option
+          {section.items.map((item) => {
+            if (item.isLoading) {
+              return (
+                <div
+                  key={item.id}
+                  className="p-5 rounded-lg border border-indigo-500/50 bg-indigo-950/20 flex flex-col items-center justify-center space-y-3 min-h-[140px] animate-pulse"
+                >
+                  <Loader2 className="w-6 h-6 text-indigo-400 animate-spin" />
+                  <span className="text-sm text-indigo-300 font-medium">
+                    {item.title}
                   </span>
                 </div>
-              )}
+              );
+            }
 
-              <div className="flex justify-between items-start mb-2 pr-28">
-                <h3 className="font-bold text-lg text-gray-100 w-full">
-                  <EditableField
-                    value={item.title}
-                    onChange={(val) =>
-                      updateItem(section.id, item.id, "title", val)
-                    }
-                  />
-                </h3>
-              </div>
-
-              <div className="text-sm text-gray-400 leading-relaxed pr-10 w-full">
-                <EditableField
-                  isTextArea
-                  value={item.content}
-                  onChange={(val) =>
-                    updateItem(section.id, item.id, "content", val)
-                  }
-                />
-              </div>
-
-              {/* Item Controls */}
-              <div className="absolute top-4 right-4 flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                {apiKey && (
+            if (item.error) {
+              return (
+                <div
+                  key={item.id}
+                  className="p-5 rounded-lg border border-red-500/50 bg-red-950/20 flex flex-col items-center justify-center space-y-3 min-h-[140px]"
+                >
+                  <AlertTriangle className="w-6 h-6 text-red-400" />
+                  <span className="text-sm text-red-300 text-center font-mono px-4">
+                    {item.content}
+                  </span>
                   <button
-                    onClick={() =>
-                      triggerInlineAiAlternative(
-                        section.id,
-                        item.title,
-                        item.content,
-                      )
-                    }
-                    className="p-1.5 text-indigo-400 hover:bg-indigo-500/20 rounded bg-gray-950/50 transition-colors"
-                    title="Generate Inline Alternative"
+                    onClick={() => deleteItem(section.id, item.id)}
+                    className="px-3 py-1.5 mt-2 bg-red-500/20 hover:bg-red-500/40 text-red-300 rounded flex items-center gap-1 text-xs transition-colors"
                   >
-                    <Sparkles className="w-4 h-4" />
+                    <Trash2 className="w-3 h-3" /> Delete
                   </button>
+                </div>
+              );
+            }
+            return (
+              <div
+                key={item.id}
+                className={`p-5 rounded-lg border relative group transition-colors ${item.isAiOption ? "border-indigo-500/50 bg-indigo-950/20" : item.isRecommended ? "border-emerald-500/30 bg-emerald-950/10" : "border-gray-800 bg-gray-900"}`}
+              >
+                {item.isAiOption && (
+                  <div className="mb-3">
+                    <span className="bg-indigo-900/50 border border-indigo-500/30 text-indigo-300 text-[10px] uppercase font-bold tracking-wider px-2 py-1 rounded inline-flex items-center gap-1">
+                      <Sparkles className="w-3 h-3" /> AI Option
+                    </span>
+                  </div>
                 )}
 
-                <button
-                  onClick={() =>
-                    updateItem(
-                      section.id,
-                      item.id,
-                      "isRecommended",
-                      !item.isRecommended,
-                    )
-                  }
-                  className={`p-1.5 rounded transition-colors ${item.isRecommended ? "text-emerald-400 bg-emerald-950 hover:bg-emerald-900/50" : "text-gray-500 bg-gray-950/50 hover:text-gray-300 hover:bg-gray-800"}`}
-                  title="Toggle Recommended Status"
-                >
-                  <Check className="w-4 h-4" />
-                </button>
-                <button
-                  onClick={() => deleteItem(section.id, item.id)}
-                  className="p-1.5 text-red-400 hover:bg-red-500/20 rounded bg-gray-950/50 transition-colors"
-                  title="Delete Item"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
-              </div>
+                <div className="flex justify-between items-start mb-2 pr-28">
+                  <h3 className="font-bold text-lg text-gray-100 w-full">
+                    <EditableField
+                      value={item.title}
+                      onChange={(val) =>
+                        updateItem(section.id, item.id, "title", val)
+                      }
+                    />
+                  </h3>
+                </div>
 
-              {!item.isAiOption && item.isRecommended && (
-                <span className="absolute bottom-4 right-4 text-emerald-500/50 text-[10px] uppercase font-bold tracking-wider pointer-events-none">
-                  Recommended
-                </span>
-              )}
-            </div>
-          ))}
+                <div className="text-sm text-gray-400 leading-relaxed pr-10 w-full">
+                  <EditableField
+                    isTextArea
+                    value={item.content}
+                    onChange={(val) =>
+                      updateItem(section.id, item.id, "content", val)
+                    }
+                  />
+                </div>
+
+                {/* Item Controls */}
+                <div className="absolute top-4 right-4 flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                  {apiKey && (
+                    <button
+                      onClick={() =>
+                        triggerInlineAiAlternative(
+                          section.id,
+                          item.title,
+                          item.content,
+                        )
+                      }
+                      className="p-1.5 text-indigo-400 hover:bg-indigo-500/20 rounded bg-gray-950/50 transition-colors"
+                      title="Generate Inline Alternative"
+                    >
+                      <Sparkles className="w-4 h-4" />
+                    </button>
+                  )}
+
+                  <button
+                    onClick={() =>
+                      updateItem(
+                        section.id,
+                        item.id,
+                        "isRecommended",
+                        !item.isRecommended,
+                      )
+                    }
+                    className={`p-1.5 rounded transition-colors ${item.isRecommended ? "text-emerald-400 bg-emerald-950 hover:bg-emerald-900/50" : "text-gray-500 bg-gray-950/50 hover:text-gray-300 hover:bg-gray-800"}`}
+                    title="Toggle Recommended Status"
+                  >
+                    <Check className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => deleteItem(section.id, item.id)}
+                    className="p-1.5 text-red-400 hover:bg-red-500/20 rounded bg-gray-950/50 transition-colors"
+                    title="Delete Item"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+
+                {!item.isAiOption && item.isRecommended && (
+                  <span className="absolute bottom-4 right-4 text-emerald-500/50 text-[10px] uppercase font-bold tracking-wider pointer-events-none">
+                    Recommended
+                  </span>
+                )}
+              </div>
+            );
+          })}
 
           <button
             onClick={() => addItem(section.id)}
