@@ -1,5 +1,8 @@
 import React, { useState, useRef, useEffect } from "react";
 import {
+  Search,
+  ChevronRight,
+  ChevronDown,
   Settings,
   Cpu,
   Smartphone,
@@ -119,14 +122,15 @@ const AVAILABLE_ICONS = {
 
 async function generateWithGemini(
   apiKey,
+  model,
   prompt,
   systemInstruction = "You are an expert systems architect and product engineer.",
   isJson = false,
 ) {
-  if (!apiKey)
-    throw new Error("API Key is missing. Please set your Gemini API key.");
+  if (!apiKey) throw new Error("API Key is missing.");
+  const selectedModel = model || "gemini-2.5-flash-preview-09-2025";
 
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${selectedModel}:generateContent?key=${apiKey}`;
   const payload = {
     contents: [{ parts: [{ text: prompt }] }],
     systemInstruction: { parts: [{ text: systemInstruction }] },
@@ -161,7 +165,6 @@ async function generateWithGemini(
       if (!text) throw new Error("No response generated.");
 
       if (isJson) {
-        // Fallback cleanup just in case LLM wraps it in markdown despite mimeType
         const clean = text
           .replace(/```json/g, "")
           .replace(/```/g, "")
@@ -170,8 +173,7 @@ async function generateWithGemini(
       }
       return text;
     } catch (error) {
-      if (i === 4)
-        throw new Error("Failed after multiple retries. " + error.message);
+      if (i === 4) throw new Error("Failed after retries: " + error.message);
       await new Promise((r) => setTimeout(r, delay));
       delay *= 2;
     }
@@ -262,12 +264,20 @@ const EditableField = ({
 export default function App() {
   const fileInputRef = useRef(null);
 
-  // API Key State
   const [apiKey, setApiKey] = useState(
     () => localStorage.getItem("gemini_api_key") || "",
   );
+  const [selectedModel, setSelectedModel] = useState(
+    () => localStorage.getItem("gemini_model") || "gemini-2.5-flash",
+  );
   const [showApiModal, setShowApiModal] = useState(false);
-  const [tempApiKey, setTempApiKey] = useState("");
+  const [tempApiKey, setTempApiKey] = useState(apiKey);
+
+  // Model Picker State
+  const [modelSearch, setModelSearch] = useState("");
+  const [availableModels, setAvailableModels] = useState([]);
+  const [isFetchingModels, setIsFetchingModels] = useState(false);
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
 
   // Data State with Autosave Loading
   const [data, setData] = useState(() => {
@@ -312,6 +322,45 @@ export default function App() {
       setTempApiKey("");
     }
   };
+  const fetchModels = async (key) => {
+    if (!key) return;
+    setIsFetchingModels(true);
+    try {
+      const res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models?key=${key}`,
+      );
+      const result = await res.json();
+      if (result.models) {
+        // Filter for models that support generateContent
+        const filtered = result.models
+          .filter((m) =>
+            m.supportedGenerationMethods.includes("generateContent"),
+          )
+          .map((m) => ({
+            name: m.name.split("/").pop(),
+            displayName: m.displayName,
+            description: m.description,
+          }));
+        setAvailableModels(filtered);
+      }
+    } catch (e) {
+      console.error("Failed to fetch models", e);
+    } finally {
+      setIsFetchingModels(false);
+    }
+  };
+
+  const saveSettings = () => {
+    localStorage.setItem("gemini_api_key", tempApiKey.trim());
+    localStorage.setItem("gemini_model", selectedModel);
+    setApiKey(tempApiKey.trim());
+    setShowApiModal(false);
+  };
+  useEffect(() => {
+    if (showApiModal && tempApiKey) {
+      fetchModels(tempApiKey);
+    }
+  }, [showApiModal, tempApiKey]);
 
   // Handle File Upload
   const handleFileUpload = (e) => {
@@ -477,6 +526,7 @@ export default function App() {
       const aiObject = await generateWithGemini(
         apiKey,
         prompt,
+        selectedModel,
         "You are an expert systems architect and product engineer.",
         true,
       );
@@ -528,6 +578,7 @@ export default function App() {
       const response = await generateWithGemini(
         apiKey,
         promptContext,
+        selectedModel,
         systemPrompt,
         false,
       );
@@ -540,6 +591,12 @@ export default function App() {
       }));
     }
   };
+
+  const filteredModels = availableModels.filter(
+    (m) =>
+      m.name.toLowerCase().includes(modelSearch.toLowerCase()) ||
+      m.displayName.toLowerCase().includes(modelSearch.toLowerCase()),
+  );
 
   const triggerGeminiAudit = () => {
     const prompt = `Please audit this project configuration:\n\n${JSON.stringify(data, null, 2)}\n\nAct as a senior systems architect. Identify any potential bottlenecks, logical flaws, missing modern optimizations, or scalability concerns. Provide 3 specific bullet points of constructive feedback.`;
@@ -773,6 +830,9 @@ export default function App() {
   };
 
   const TitleIcon = AVAILABLE_ICONS[data.title.icon] || Settings;
+  const currentModelData = availableModels.find(
+    (m) => m.name === selectedModel,
+  );
 
   return (
     <div className="min-h-screen bg-gray-950 text-gray-200 font-sans flex md:flex-row selection:bg-emerald-900/50">
@@ -910,58 +970,163 @@ export default function App() {
       {/* API Key Request Modal */}
       {showApiModal && (
         <div
-          className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[70] p-4"
+          className="fixed inset-0 bg-black/80 backdrop-blur-xl flex items-center justify-center z-[100] p-4"
           onClick={() => setShowApiModal(false)}
         >
           <div
-            className="bg-gray-900 border border-gray-700 rounded-xl w-full max-w-md shadow-2xl p-6"
+            className="bg-gray-900 border border-gray-700 rounded-3xl w-full max-w-xl shadow-2xl overflow-visible flex flex-col max-h-[90vh]"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center gap-3 mb-4 text-emerald-400">
-              <KeyRound className="w-6 h-6" />
-              <h2 className="text-xl font-bold text-white">Gemini API Key</h2>
-            </div>
-            <p className="text-gray-400 text-sm mb-6 leading-relaxed">
-              To use AI features like generation and architecture auditing, you
-              need a free Gemini API token. Your key is saved locally in your
-              browser.
-            </p>
-
-            <input
-              type="password"
-              placeholder="Paste your API Key here..."
-              value={tempApiKey}
-              onChange={(e) => setTempApiKey(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && saveApiKey()}
-              className="w-full bg-gray-950 border border-gray-700 rounded-lg p-3 text-white focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 mb-4 transition-all"
-            />
-
-            <div className="flex justify-between items-center mt-2">
-              <a
-                href="https://aistudio.google.com/app/apikey"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-emerald-500 hover:text-emerald-400 text-sm flex items-center gap-1 transition-colors"
-              >
-                Get a token here <ExternalLink className="w-3 h-3" />
-              </a>
-              <div className="flex gap-2">
-                {apiKey && (
-                  <button
-                    onClick={() => setShowApiModal(false)}
-                    className="px-4 py-2 text-sm text-gray-400 hover:text-white transition-colors"
-                  >
-                    Cancel
-                  </button>
-                )}
-                <button
-                  onClick={saveApiKey}
-                  disabled={!tempApiKey.trim()}
-                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg text-sm font-medium transition-colors"
-                >
-                  Save Key
-                </button>
+            <div className="p-3 border-b border-gray-800 flex justify-between items-center bg-gray-800/20 rounded-t-3xl">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-emerald-500/20 rounded-xl text-emerald-400">
+                  <KeyRound className="w-6 h-6" />
+                </div>
+                <h2 className="text-xl font-bold">API & Model Settings</h2>
               </div>
+              <button
+                onClick={() => setShowApiModal(false)}
+                className="p-2 hover:bg-white/10 rounded-full transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-5 overflow-y-visible flex-1 space-y-8">
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase tracking-widest mb-3 ml-2">
+                  API Token
+                </label>
+                <div className="relative">
+                  <input
+                    type="password"
+                    value={tempApiKey}
+                    onChange={(e) => setTempApiKey(e.target.value)}
+                    placeholder="Paste Gemini API Key..."
+                    className="w-full bg-black/40 border border-gray-700 rounded-2xl p-4 text-white focus:border-emerald-500 transition-all font-mono text-sm"
+                  />
+                </div>
+                <div className="mt-3 flex justify-between items-center px-1">
+                  <a
+                    href="https://aistudio.google.com/app/apikey"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-[10px] text-emerald-500 hover:underline flex items-center gap-1"
+                  >
+                    Get Free Key <ExternalLink className="w-2.5 h-2.5" />
+                  </a>
+                  {isFetchingModels && (
+                    <div className="flex items-center gap-2 text-[10px] text-gray-500 animate-pulse">
+                      <Loader2 className="w-2.5 h-2.5 animate-spin" /> Verifying
+                      Key...
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Dynamic Model Picker Dropdown */}
+              <div className="relative">
+                <label className="block text-xs font-bold text-gray-500 uppercase tracking-widest mb-3 ml-2">
+                  Select Model
+                </label>
+
+                <button
+                  onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+                  className="w-full bg-black/40 border border-gray-700 rounded-2xl p-4 flex items-center justify-between hover:border-emerald-500 focus:border-emerald-500 transition-all text-left group"
+                >
+                  <div className="flex-1 pr-4">
+                    <div className="text-sm font-bold text-white truncate">
+                      {currentModelData
+                        ? currentModelData.displayName
+                        : selectedModel}
+                    </div>
+                    <div className="text-[10px] text-gray-500 mt-1 line-clamp-1">
+                      {currentModelData
+                        ? currentModelData.description
+                        : "Custom or unrecognized model"}
+                    </div>
+                  </div>
+                  <ChevronDown
+                    className={`w-5 h-5 text-gray-500 group-hover:text-white transition-transform ${isDropdownOpen ? "rotate-180" : ""}`}
+                  />
+                </button>
+
+                {/* Dropdown Menu Popup */}
+                {isDropdownOpen && (
+                  <div className="absolute top-full left-0 right-0 mt-2 bg-gray-900 border border-gray-700 rounded-2xl shadow-2xl z-50 overflow-hidden flex flex-col">
+                    <div className="p-3 border-b border-gray-800 bg-gray-800/50">
+                      <div className="relative group">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500 group-focus-within:text-emerald-500 transition-colors" />
+                        <input
+                          type="text"
+                          value={modelSearch}
+                          onChange={(e) => setModelSearch(e.target.value)}
+                          placeholder="Search available models..."
+                          className="w-full bg-black/40 border border-gray-700 rounded-xl pl-9 pr-4 py-2 text-sm text-white focus:border-emerald-500 focus:outline-none transition-all"
+                          autoFocus
+                        />
+                      </div>
+                    </div>
+
+                    <div className="max-h-[250px] overflow-y-auto custom-scrollbar p-2">
+                      {availableModels.length > 0 ? (
+                        filteredModels.length > 0 ? (
+                          filteredModels.map((m) => (
+                            <button
+                              key={m.name}
+                              onClick={() => {
+                                setSelectedModel(m.name);
+                                setIsDropdownOpen(false);
+                                setModelSearch("");
+                              }}
+                              className={`w-full text-left p-3 rounded-xl transition-all flex items-center justify-between mb-1 last:mb-0 group ${selectedModel === m.name ? "bg-emerald-500/10 border border-emerald-500/30" : "hover:bg-gray-800 border border-transparent"}`}
+                            >
+                              <div className="flex-1 pr-4">
+                                <div
+                                  className={`text-sm font-bold flex items-center gap-2 ${selectedModel === m.name ? "text-emerald-400" : "text-gray-200 group-hover:text-white"}`}
+                                >
+                                  {m.displayName}
+                                </div>
+                                <div className="text-[10px] text-gray-500 mt-0.5 line-clamp-1">
+                                  {m.description}
+                                </div>
+                              </div>
+                              {selectedModel === m.name && (
+                                <Check className="w-4 h-4 text-emerald-400 shrink-0" />
+                              )}
+                            </button>
+                          ))
+                        ) : (
+                          <div className="py-8 text-center text-gray-500 text-xs italic">
+                            No models match your search.
+                          </div>
+                        )
+                      ) : (
+                        <div className="py-8 text-center text-gray-500 text-xs">
+                          {isFetchingModels
+                            ? "Loading models..."
+                            : "Enter a valid API key to load models"}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="p-3 border-t border-gray-800 bg-gray-800/20 flex justify-end gap-3 rounded-b-3xl mt-auto">
+              <button
+                onClick={() => setShowApiModal(false)}
+                className="px-6 py-2.5 rounded-xl text-sm font-semibold text-gray-400 hover:text-white transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={saveSettings}
+                className="px-8 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-sm font-bold shadow-lg shadow-emerald-900/40 transition-all"
+              >
+                Apply Settings
+              </button>
             </div>
           </div>
         </div>
