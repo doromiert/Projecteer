@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
+import { marked } from "https://esm.sh/marked";
 import {
   Search,
   ChevronRight,
@@ -1251,9 +1252,12 @@ export default function App() {
                   </div>
                 </div>
               ) : (
-                <div className="text-gray-200 text-sm leading-relaxed whitespace-pre-wrap font-sans">
-                  {geminiModal.response}
-                </div>
+                <div
+                  className="text-gray-200 text-sm leading-relaxed whitespace-pre-wrap font-sans"
+                  dangerouslySetInnerHTML={{
+                    __html: marked.parse(geminiModal.response),
+                  }}
+                />
               )}
             </div>
             <div className="px-5 py-4 border-t border-gray-800 flex justify-end shrink-0">
