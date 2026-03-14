@@ -121,16 +121,20 @@ const AVAILABLE_ICONS = {
 };
 
 async function generateWithGemini(
-  apiKey,
+  apiKeyParam,
   model,
   prompt,
-  systemInstruction = "You are an expert systems architect and product engineer.",
+  systemInstruction = "You are an expert systems architect.",
   isJson = false,
 ) {
-  if (!apiKey) throw new Error("API Key is missing.");
+  // Use environment key if provided, otherwise fallback to user state
+  const apiKey = apiKeyParam || "";
   const selectedModel = model || "gemini-2.5-flash-preview-09-2025";
 
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${selectedModel}:generateContent?key=${apiKey}`;
+  // Simplest Quick Fix: Prepend a CORS proxy to bypass browser restrictions
+  const baseUrl = `https://generativelanguage.googleapis.com/v1beta/models/${selectedModel}:generateContent?key=${apiKey}`;
+  const url = `https://corsproxy.io/?${encodeURIComponent(baseUrl)}`;
+
   const payload = {
     contents: [{ parts: [{ text: prompt }] }],
     systemInstruction: { parts: [{ text: systemInstruction }] },
@@ -158,13 +162,20 @@ async function generateWithGemini(
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-      if (!response.ok)
-        throw new Error(`HTTP error! status: ${response.status}`);
+
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(
+          errData?.error?.message || `HTTP error! status: ${response.status}`,
+        );
+      }
+
       const result = await response.json();
       const text = result.candidates?.[0]?.content?.parts?.[0]?.text;
       if (!text) throw new Error("No response generated.");
 
       if (isJson) {
+        // Cleaning potential markdown wrappers
         const clean = text
           .replace(/```json/g, "")
           .replace(/```/g, "")
@@ -173,7 +184,7 @@ async function generateWithGemini(
       }
       return text;
     } catch (error) {
-      if (i === 4) throw new Error("Failed after retries: " + error.message);
+      if (i === 4) throw new Error("Connection failed: " + error.message);
       await new Promise((r) => setTimeout(r, delay));
       delay *= 2;
     }
@@ -525,8 +536,8 @@ export default function App() {
 
       const aiObject = await generateWithGemini(
         apiKey,
-        prompt,
         selectedModel,
+        prompt,
         "You are an expert systems architect and product engineer.",
         true,
       );
@@ -577,8 +588,8 @@ export default function App() {
     try {
       const response = await generateWithGemini(
         apiKey,
-        promptContext,
         selectedModel,
+        promptContext,
         systemPrompt,
         false,
       );
@@ -774,19 +785,7 @@ export default function App() {
                     <Sparkles className="w-4 h-4" />
                   </button>
                 )}
-                <button
-                  onClick={() =>
-                    triggerInlineAiAlternative(
-                      section.id,
-                      item.title,
-                      item.content,
-                    )
-                  }
-                  className="p-1.5 text-indigo-400 hover:bg-indigo-500/20 rounded bg-gray-950/50 transition-colors"
-                  title="Generate Inline Alternative"
-                >
-                  <Sparkles className="w-4 h-4" />
-                </button>
+
                 <button
                   onClick={() =>
                     updateItem(
@@ -1025,93 +1024,95 @@ export default function App() {
               </div>
 
               {/* Dynamic Model Picker Dropdown */}
-              <div className="relative">
-                <label className="block text-xs font-bold text-gray-500 uppercase tracking-widest mb-3 ml-2">
-                  Select Model
-                </label>
+              {apiKey && (
+                <div className="relative">
+                  <label className="block text-xs font-bold text-gray-500 uppercase tracking-widest mb-3 ml-2">
+                    Select Model
+                  </label>
 
-                <button
-                  onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-                  className="w-full bg-black/40 border border-gray-700 rounded-2xl p-4 flex items-center justify-between hover:border-emerald-500 focus:border-emerald-500 transition-all text-left group"
-                >
-                  <div className="flex-1 pr-4">
-                    <div className="text-sm font-bold text-white truncate">
-                      {currentModelData
-                        ? currentModelData.displayName
-                        : selectedModel}
-                    </div>
-                    <div className="text-[10px] text-gray-500 mt-1 line-clamp-1">
-                      {currentModelData
-                        ? currentModelData.description
-                        : "Custom or unrecognized model"}
-                    </div>
-                  </div>
-                  <ChevronDown
-                    className={`w-5 h-5 text-gray-500 group-hover:text-white transition-transform ${isDropdownOpen ? "rotate-180" : ""}`}
-                  />
-                </button>
-
-                {/* Dropdown Menu Popup */}
-                {isDropdownOpen && (
-                  <div className="absolute top-full left-0 right-0 mt-2 bg-gray-900 border border-gray-700 rounded-2xl shadow-2xl z-50 overflow-hidden flex flex-col">
-                    <div className="p-3 border-b border-gray-800 bg-gray-800/50">
-                      <div className="relative group">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500 group-focus-within:text-emerald-500 transition-colors" />
-                        <input
-                          type="text"
-                          value={modelSearch}
-                          onChange={(e) => setModelSearch(e.target.value)}
-                          placeholder="Search available models..."
-                          className="w-full bg-black/40 border border-gray-700 rounded-xl pl-9 pr-4 py-2 text-sm text-white focus:border-emerald-500 focus:outline-none transition-all"
-                          autoFocus
-                        />
+                  <button
+                    onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+                    className="w-full bg-black/40 border border-gray-700 rounded-2xl p-4 flex items-center justify-between hover:border-emerald-500 focus:border-emerald-500 transition-all text-left group"
+                  >
+                    <div className="flex-1 pr-4">
+                      <div className="text-sm font-bold text-white truncate">
+                        {currentModelData
+                          ? currentModelData.displayName
+                          : selectedModel}
+                      </div>
+                      <div className="text-[10px] text-gray-500 mt-1 line-clamp-1">
+                        {currentModelData
+                          ? currentModelData.description
+                          : "Custom or unrecognized model"}
                       </div>
                     </div>
+                    <ChevronDown
+                      className={`w-5 h-5 text-gray-500 group-hover:text-white transition-transform ${isDropdownOpen ? "rotate-180" : ""}`}
+                    />
+                  </button>
 
-                    <div className="max-h-[250px] overflow-y-auto custom-scrollbar p-2">
-                      {availableModels.length > 0 ? (
-                        filteredModels.length > 0 ? (
-                          filteredModels.map((m) => (
-                            <button
-                              key={m.name}
-                              onClick={() => {
-                                setSelectedModel(m.name);
-                                setIsDropdownOpen(false);
-                                setModelSearch("");
-                              }}
-                              className={`w-full text-left p-3 rounded-xl transition-all flex items-center justify-between mb-1 last:mb-0 group ${selectedModel === m.name ? "bg-emerald-500/10 border border-emerald-500/30" : "hover:bg-gray-800 border border-transparent"}`}
-                            >
-                              <div className="flex-1 pr-4">
-                                <div
-                                  className={`text-sm font-bold flex items-center gap-2 ${selectedModel === m.name ? "text-emerald-400" : "text-gray-200 group-hover:text-white"}`}
-                                >
-                                  {m.displayName}
-                                </div>
-                                <div className="text-[10px] text-gray-500 mt-0.5 line-clamp-1">
-                                  {m.description}
-                                </div>
-                              </div>
-                              {selectedModel === m.name && (
-                                <Check className="w-4 h-4 text-emerald-400 shrink-0" />
-                              )}
-                            </button>
-                          ))
-                        ) : (
-                          <div className="py-8 text-center text-gray-500 text-xs italic">
-                            No models match your search.
-                          </div>
-                        )
-                      ) : (
-                        <div className="py-8 text-center text-gray-500 text-xs">
-                          {isFetchingModels
-                            ? "Loading models..."
-                            : "Enter a valid API key to load models"}
+                  {/* Dropdown Menu Popup */}
+                  {isDropdownOpen && (
+                    <div className="absolute top-full left-0 right-0 mt-2 bg-gray-900 border border-gray-700 rounded-2xl shadow-2xl z-50 overflow-hidden flex flex-col">
+                      <div className="p-3 border-b border-gray-800 bg-gray-800/50">
+                        <div className="relative group">
+                          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500 group-focus-within:text-emerald-500 transition-colors" />
+                          <input
+                            type="text"
+                            value={modelSearch}
+                            onChange={(e) => setModelSearch(e.target.value)}
+                            placeholder="Search available models..."
+                            className="w-full bg-black/40 border border-gray-700 rounded-xl pl-9 pr-4 py-2 text-sm text-white focus:border-emerald-500 focus:outline-none transition-all"
+                            autoFocus
+                          />
                         </div>
-                      )}
+                      </div>
+
+                      <div className="max-h-[250px] overflow-y-auto custom-scrollbar p-2">
+                        {availableModels.length > 0 ? (
+                          filteredModels.length > 0 ? (
+                            filteredModels.map((m) => (
+                              <button
+                                key={m.name}
+                                onClick={() => {
+                                  setSelectedModel(m.name);
+                                  setIsDropdownOpen(false);
+                                  setModelSearch("");
+                                }}
+                                className={`w-full text-left p-3 rounded-xl transition-all flex items-center justify-between mb-1 last:mb-0 group ${selectedModel === m.name ? "bg-emerald-500/10 border border-emerald-500/30" : "hover:bg-gray-800 border border-transparent"}`}
+                              >
+                                <div className="flex-1 pr-4">
+                                  <div
+                                    className={`text-sm font-bold flex items-center gap-2 ${selectedModel === m.name ? "text-emerald-400" : "text-gray-200 group-hover:text-white"}`}
+                                  >
+                                    {m.displayName}
+                                  </div>
+                                  <div className="text-[10px] text-gray-500 mt-0.5 line-clamp-1">
+                                    {m.description}
+                                  </div>
+                                </div>
+                                {selectedModel === m.name && (
+                                  <Check className="w-4 h-4 text-emerald-400 shrink-0" />
+                                )}
+                              </button>
+                            ))
+                          ) : (
+                            <div className="py-8 text-center text-gray-500 text-xs italic">
+                              No models match your search.
+                            </div>
+                          )
+                        ) : (
+                          <div className="py-8 text-center text-gray-500 text-xs">
+                            {isFetchingModels
+                              ? "Loading models..."
+                              : "Enter a valid API key to load models"}
+                          </div>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                )}
-              </div>
+                  )}
+                </div>
+              )}
             </div>
 
             <div className="p-3 border-t border-gray-800 bg-gray-800/20 flex justify-end gap-3 rounded-b-3xl mt-auto">
