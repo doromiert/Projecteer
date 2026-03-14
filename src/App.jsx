@@ -133,7 +133,7 @@ async function generateWithGemini(
 
   // Simplest Quick Fix: Prepend a CORS proxy to bypass browser restrictions
   const baseUrl = `https://generativelanguage.googleapis.com/v1beta/models/${selectedModel}:generateContent?key=${apiKey}`;
-  const url = `https://corsproxy.io/?${encodeURIComponent(baseUrl)}`;
+  const url = `https://api.allorigins.win/raw?url=${encodeURIComponent(baseUrl)}`;
 
   const payload = {
     contents: [{ parts: [{ text: prompt }] }],
@@ -200,6 +200,7 @@ const defaultData = {
     description:
       "Describe the high-level vision, constraints, and goals for this project. Use this workspace to architect ideas and prototype features.",
   },
+  overviewPrompt: "You are a systems engineer.",
   promptTemplate:
     'Review this project feature: "$feature - $content" within the context of $project.\n\nProvide 1 advanced technical alternative, optimization, or improvement for this specific $section feature in the context of modern system architecture. Output ONLY a valid JSON object.',
   sections: [],
@@ -273,6 +274,9 @@ const EditableField = ({
 };
 
 export default function App() {
+  const [overviewPrompt, setOverviewPrompt] = useState(
+    "You are a systems engineer.",
+  );
   const fileInputRef = useRef(null);
 
   const [apiKey, setApiKey] = useState(
@@ -538,7 +542,7 @@ export default function App() {
         apiKey,
         selectedModel,
         prompt,
-        "You are an expert systems architect and product engineer.",
+        overviewPrompt,
         true,
       );
 
@@ -660,25 +664,43 @@ export default function App() {
       </div>
 
       {apiKey && (
-        <div className="p-4 rounded-lg border border-indigo-500/30 bg-indigo-950/30 relative group">
-          <div className="flex items-center gap-2 mb-2 text-indigo-400 font-medium text-sm">
-            <Terminal className="w-4 h-4" /> Generation Prompt Template
+        <>
+          <div className="p-4 rounded-lg border border-indigo-500/30 bg-indigo-950/30 relative group">
+            <div className="flex items-center gap-2 mb-2 text-indigo-400 font-medium text-sm">
+              <Terminal className="w-4 h-4" /> Generation Prompt Template
+            </div>
+            <div className="text-gray-300 font-mono text-xs leading-relaxed">
+              <EditableField
+                isTextArea
+                value={data.promptTemplate || defaultData.promptTemplate}
+                onChange={(val) => setData({ ...data, promptTemplate: val })}
+              />
+            </div>
+            <div className="mt-3 pt-3 border-t border-indigo-500/20 text-[10px] text-gray-500 font-mono">
+              This prompt affects the "Generate Inline Alternative" feature.
+              Available variables:{" "}
+              <span className="text-indigo-400/70">$project</span>,{" "}
+              <span className="text-indigo-400/70">$section</span>,{" "}
+              <span className="text-indigo-400/70">$feature</span>,{" "}
+              <span className="text-indigo-400/70">$content</span>
+            </div>
           </div>
-          <div className="text-gray-300 font-mono text-xs leading-relaxed">
-            <EditableField
-              isTextArea
-              value={data.promptTemplate || defaultData.promptTemplate}
-              onChange={(val) => setData({ ...data, promptTemplate: val })}
-            />
+          <div className="p-4 rounded-lg border border-indigo-500/30 bg-indigo-950/30 relative group">
+            <div className="flex items-center gap-2 mb-2 text-indigo-400 font-medium text-sm">
+              <Terminal className="w-4 h-4" /> Overview Prompt Template
+            </div>
+            <div className="text-gray-300 font-mono text-xs leading-relaxed">
+              <EditableField
+                isTextArea
+                value={data.overviewPrompt || defaultData.overviewPrompt}
+                onChange={(val) => setData({ ...data, overviewPrompt: val })}
+              />
+            </div>
+            <div className="mt-3 pt-3 border-t border-indigo-500/20 text-[10px] text-gray-500 font-mono">
+              This prompt affects the "Audit Project" feature.
+            </div>
           </div>
-          <div className="mt-3 pt-3 border-t border-indigo-500/20 text-[10px] text-gray-500 font-mono">
-            Available variables:{" "}
-            <span className="text-indigo-400/70">$project</span>,{" "}
-            <span className="text-indigo-400/70">$section</span>,{" "}
-            <span className="text-indigo-400/70">$feature</span>,{" "}
-            <span className="text-indigo-400/70">$content</span>
-          </div>
-        </div>
+        </>
       )}
 
       <div className="p-4 rounded-lg border border-dashed border-gray-700 text-center text-sm text-gray-500">
@@ -924,7 +946,7 @@ export default function App() {
               onClick={triggerGeminiAudit}
               className="w-full flex items-center justify-center gap-2 bg-indigo-600/20 border border-indigo-500/50 hover:bg-indigo-600/40 text-indigo-300 px-4 py-2 rounded-md font-medium text-sm transition-colors shadow-lg shadow-indigo-900/10"
             >
-              <Sparkles className="w-4 h-4" /> Audit Configuration
+              <Sparkles className="w-4 h-4" /> Audit Project
             </button>
           )}
 
