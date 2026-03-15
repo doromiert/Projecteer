@@ -1,1 +1,6 @@
 @tailwind utilities;
+html,
+body {
+  background-color: #030712;
+  overscroll-behavior-y: none; /* Prevents vertical bounce exposing the background */
+}

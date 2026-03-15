@@ -326,6 +326,98 @@ export default function App() {
     sectionId: null,
   });
 
+  const sidebarRef = useRef(null);
+  const touchStartRef = useRef({ x: 0, y: 0, time: 0 });
+  const isDraggingRef = useRef(false);
+  const sidebarWidth = 288; // 72rem in Tailwind = 288px
+
+  useEffect(() => {
+    const handleTouchStart = (e) => {
+      if (window.innerWidth >= 768) return; // Disable on desktop
+
+      const touch = e.touches[0];
+      // Trigger if swiping from the left edge (< 40px) OR if sidebar is already open
+      if (touch.clientX < 40 || isSidebarOpen) {
+        touchStartRef.current = {
+          x: touch.clientX,
+          y: touch.clientY,
+          time: Date.now(),
+        };
+        isDraggingRef.current = true;
+
+        if (sidebarRef.current) {
+          sidebarRef.current.style.transition = "none"; // Disable CSS transitions for 1:1 tracking
+        }
+      }
+    };
+
+    const handleTouchMove = (e) => {
+      if (!isDraggingRef.current) return;
+
+      const touch = e.touches[0];
+      const deltaX = touch.clientX - touchStartRef.current.x;
+      const deltaY = touch.clientY - touchStartRef.current.y;
+
+      // Abort if scrolling vertically intentionally
+      if (Math.abs(deltaY) > Math.abs(deltaX) && Math.abs(deltaY) > 10) {
+        isDraggingRef.current = false;
+        return;
+      }
+
+      let translateX = isSidebarOpen ? deltaX : -sidebarWidth + deltaX;
+
+      // Overshoot logic: dampen the translation once it exceeds 0
+      if (translateX > 0) {
+        translateX = translateX * 0.15; // Resistance factor
+      }
+
+      // Clamp bottom
+      if (translateX < -sidebarWidth) {
+        translateX = -sidebarWidth;
+      }
+
+      if (sidebarRef.current) {
+        sidebarRef.current.style.transform = `translateX(${translateX}px)`;
+      }
+    };
+
+    const handleTouchEnd = (e) => {
+      if (!isDraggingRef.current) return;
+      isDraggingRef.current = false;
+
+      if (!sidebarRef.current) return;
+
+      const touch = e.changedTouches[0];
+      const deltaX = touch.clientX - touchStartRef.current.x;
+      const deltaTime = Date.now() - touchStartRef.current.time;
+      const velocity = Math.abs(deltaX / deltaTime);
+
+      // Re-enable smooth transition for the snap
+      sidebarRef.current.style.transition =
+        "transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)";
+      sidebarRef.current.style.transform = ""; // Clear inline style to let React/Tailwind take over
+
+      // Snap logic based on velocity or position threshold
+      if (isSidebarOpen) {
+        if (deltaX < -50 || (deltaX < 0 && velocity > 0.5))
+          setIsSidebarOpen(false);
+      } else {
+        if (deltaX > 50 || (deltaX > 0 && velocity > 0.5))
+          setIsSidebarOpen(true);
+      }
+    };
+
+    window.addEventListener("touchstart", handleTouchStart, { passive: true });
+    window.addEventListener("touchmove", handleTouchMove, { passive: false });
+    window.addEventListener("touchend", handleTouchEnd);
+
+    return () => {
+      window.removeEventListener("touchstart", handleTouchStart);
+      window.removeEventListener("touchmove", handleTouchMove);
+      window.removeEventListener("touchend", handleTouchEnd);
+    };
+  }, [isSidebarOpen]);
+
   // Autosave Effect
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -945,7 +1037,7 @@ export default function App() {
   );
 
   return (
-    <div className="h-screen bg-gray-950 text-gray-200 font-sans flex flex-col md:flex-row overflow-hidden selection:bg-emerald-900/50">
+    <div className="h-[100dvh] min-h-[100dvh] bg-gray-950 text-gray-200 font-sans flex flex-col md:flex-row overflow-hidden selection:bg-emerald-900/50">
       {/* Hidden File Input for JSON Upload */}
       <input
         type="file"
@@ -957,10 +1049,6 @@ export default function App() {
 
       {/* Mobile Header */}
       <div className="md:!hidden flex items-center justify-between bg-gray-900 border-b border-gray-800 p-4 shrink-0 z-40 relative">
-        <div className="flex items-center gap-3 font-bold text-gray-100">
-          <TitleIcon className="w-5 h-5 text-emerald-500" />
-          <span className="truncate max-w-[200px]">{data.title.text}</span>
-        </div>
         <button
           onClick={() => setIsSidebarOpen(!isSidebarOpen)}
           className="p-1 text-gray-400 hover:text-white transition-colors"
@@ -971,6 +1059,11 @@ export default function App() {
             <Menu className="w-6 h-6" />
           )}
         </button>
+        <div className="flex items-center gap-3 font-bold text-gray-100">
+          <TitleIcon className="w-5 h-5 text-emerald-500" />
+          <span className="truncate max-w-[200px]">{data.title.text}</span>
+        </div>
+        <span className="w-8" />
       </div>
 
       {/* Mobile Sidebar Overlay */}
@@ -983,6 +1076,7 @@ export default function App() {
 
       {/* Responsive Sidebar */}
       <div
+        ref={sidebarRef}
         className={`fixed inset-y-0 left-0 z-50 w-72 md:w-64 bg-gray-900 border-r border-gray-800  max-h-lvh flex flex-col shrink-0 overflow-y-auto transition-transform duration-300 md:relative md:translate-x-0 ${isSidebarOpen ? "translate-x-0" : "-translate-x-full"}`}
       >
         <div className="p-6 border-b border-gray-800">
@@ -1092,16 +1186,15 @@ export default function App() {
       </div>
 
       {/* Main Content */}
-      <div className="flex flex-col w-full h-screen">
-        {/* Main Scrollable Area */}
-        <div className="ml-0 md:ml-72 flex-1 overflow-y-auto bg-gray-950 relative">
-          <div className="max-w-4xl mx-auto p-6 md:p-8">
-            {activeTabId === "overview"
-              ? renderOverview()
-              : data.sections.find((s) => s.id === activeTabId)
-                ? renderSection(data.sections.find((s) => s.id === activeTabId))
-                : null}
-          </div>
+
+      {/* Main Scrollable Area */}
+      <div className="ml-0 md:ml-72 flex-1 overflow-y-auto bg-gray-950 relative">
+        <div className="max-w-4xl mx-auto p-6 md:p-8">
+          {activeTabId === "overview"
+            ? renderOverview()
+            : data.sections.find((s) => s.id === activeTabId)
+              ? renderSection(data.sections.find((s) => s.id === activeTabId))
+              : null}
         </div>
       </div>
 
