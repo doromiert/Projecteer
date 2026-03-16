@@ -335,9 +335,38 @@ export default function App() {
   const [isInteracting, setIsInteracting] = useState(false);
   const [forceUpdate, setForceUpdate] = useState(0);
 
+  // 1. DOM Synchronization Hook
+  // Handles the cleanup independently to prevent React state race conditions.
   useEffect(() => {
+    if (!isInteracting) {
+      // Wait for React to apply the transition-transform classes to the DOM,
+      // THEN clear the inline styles so the browser animates from the exact drop coordinate.
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          if (sidebarRef.current) {
+            sidebarRef.current.style.transform = "";
+          }
+          if (overlayRef.current) {
+            overlayRef.current.style.opacity = "";
+            overlayRef.current.style.pointerEvents = isSidebarOpen
+              ? "auto"
+              : "none";
+          }
+        });
+      });
+    }
+  }, [isInteracting, isSidebarOpen]);
+
+  // 2. Core Gesture Hook
+  // Handles fluid delta updates and state resolution
+  useEffect(() => {
+    const abortDrag = () => {
+      isDraggingRef.current = false;
+      directionLockedRef.current = false;
+      setIsInteracting(false); // Hands control immediately back to Tailwind
+    };
+
     const handleTouchStart = (e) => {
-      setIsInteracting(false);
       if (window.innerWidth >= 768) return;
 
       const touch = e.touches[0];
@@ -348,84 +377,32 @@ export default function App() {
       };
       isDraggingRef.current = true;
       directionLockedRef.current = false;
-
-      // IMPORTANT: Don't set pointer-events here yet.
-      // Wait until we are SURE it's a horizontal swipe.
-    };
-
-    const smoothReset = (shouldOpen) => {
-      isDraggingRef.current = false;
-      directionLockedRef.current = false;
-
-      if (sidebarRef.current && overlayRef.current) {
-        // Re-apply transitions manually for the final snap
-        const transition = "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)";
-        sidebarRef.current.style.transition = transition;
-        overlayRef.current.style.transition = transition;
-
-        // Set the target positions
-        sidebarRef.current.style.transform = shouldOpen
-          ? "translateX(0px)"
-          : `translateX(-100%)`;
-        overlayRef.current.style.opacity = shouldOpen ? "1" : "0";
-
-        // Wait for animation, then let React take over
-        setTimeout(() => {
-          setIsSidebarOpen(shouldOpen);
-          if (sidebarRef.current) {
-            sidebarRef.current.style.transform = "";
-            sidebarRef.current.style.transition = "";
-          }
-          if (overlayRef.current) {
-            overlayRef.current.style.opacity = "";
-            overlayRef.current.style.transition = "";
-            overlayRef.current.style.pointerEvents = shouldOpen
-              ? "auto"
-              : "none";
-          }
-        }, 300);
-      }
     };
 
     const handleTouchMove = (e) => {
-      setIsInteracting(true);
       if (!isDraggingRef.current) return;
 
       const touch = e.touches[0];
       const deltaX = touch.clientX - touchStartRef.current.x;
       const deltaY = touch.clientY - touchStartRef.current.y;
 
+      // Lock gesture direction to horizontal
       if (!directionLockedRef.current) {
         const isHorizontal = Math.abs(deltaX) > Math.abs(deltaY) * 1.5;
-        if (Math.abs(deltaX) < 10) return;
+        if (Math.abs(deltaX) < 10) return; // Prevent jitter
 
-        if (!isHorizontal || (!isSidebarOpen && deltaX < 0)) {
-          smoothReset(isSidebarOpen);
+        if (!isHorizontal) {
+          abortDrag();
           return;
         }
         directionLockedRef.current = true;
-        setForceUpdate((prev) => prev + 1);
-      }
-
-      // --- NEW: REVERSE ABORT LOGIC ---
-      // If the sidebar is closed and we swipe right then back left past the start point:
-      if (!isSidebarOpen && deltaX < -10) {
-        smoothReset(false);
-        return;
-      }
-      // If the sidebar is open and we swipe left then back right past the start point:
-      if (isSidebarOpen && deltaX > 10) {
-        smoothReset(true);
-        return;
+        setIsInteracting(true); // Confirmed swipe -> disable Tailwind transitions
       }
 
       if (e.cancelable) e.preventDefault();
-      if ((!isSidebarOpen && deltaX < -15) || (isSidebarOpen && deltaX > 15)) {
-        smoothReset(isSidebarOpen);
-        return;
-      }
 
-      let currentPos = isSidebarOpen ? deltaX : -sidebarWidth + deltaX;
+      // Calculate precise coordinate and hard clamp to prevent over-dragging
+      let currentPos = isSidebarOpen ? deltaX : deltaX;
 
       if (sidebarRef.current) {
         sidebarRef.current.style.transform = `translateX(${currentPos}px)`;
@@ -434,7 +411,6 @@ export default function App() {
       if (overlayRef.current) {
         const progress = (sidebarWidth + currentPos) / sidebarWidth;
         overlayRef.current.style.opacity = progress.toString();
-        // Ensure overlay is clickable during the drag
         overlayRef.current.style.pointerEvents =
           progress > 0.05 ? "auto" : "none";
       }
@@ -449,6 +425,7 @@ export default function App() {
       const deltaTime = Date.now() - touchStartRef.current.time;
       const velocity = Math.abs(deltaX / deltaTime);
 
+      // Resolve final state based on distance or velocity
       let shouldOpen = isSidebarOpen;
       if (isSidebarOpen) {
         if (deltaX < -70 || (deltaX < 0 && velocity > 0.4)) shouldOpen = false;
@@ -456,53 +433,18 @@ export default function App() {
         if (deltaX > 70 || (deltaX > 0 && velocity > 0.4)) shouldOpen = true;
       }
 
-      // Final Animation
-      const transitionStyle = "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)";
-      if (sidebarRef.current) {
-        sidebarRef.current.style.transition = transitionStyle;
-        sidebarRef.current.style.transform = shouldOpen
-          ? "translateX(0px)"
-          : `translateX(-100%)`;
-      }
-      if (overlayRef.current) {
-        overlayRef.current.style.transition = transitionStyle;
-        overlayRef.current.style.opacity = shouldOpen ? "1" : "0";
-      }
-
-      // Cleanup & Sync React State
-      setTimeout(() => {
-        setIsInteracting(false);
-        setIsSidebarOpen(shouldOpen);
-        if (sidebarRef.current) {
-          sidebarRef.current.style.transition = "";
-          sidebarRef.current.style.transform = "";
-        }
-        if (overlayRef.current) {
-          overlayRef.current.style.transition = "";
-          overlayRef.current.style.opacity = "";
-          // Reset pointer events based on final state
-          overlayRef.current.style.pointerEvents = shouldOpen ? "auto" : "none";
-        }
-      }, 300);
+      // Sync state instantly. The rAF hook will handle the visual handoff.
+      setIsInteracting(false);
+      setIsSidebarOpen(shouldOpen);
     };
 
-    const handleTouchCancel = () => {
-      isDraggingRef.current = false;
-      if (isDraggingRef.current) {
-        smoothReset(isSidebarOpen);
-      }
-      if (overlayRef.current && !isSidebarOpen) {
-        overlayRef.current.style.pointerEvents = "none";
-        overlayRef.current.style.opacity = "0";
-      }
-    };
-
-    window.addEventListener("touchcancel", handleTouchCancel);
+    window.addEventListener("touchcancel", abortDrag);
     window.addEventListener("touchstart", handleTouchStart, { passive: true });
     window.addEventListener("touchmove", handleTouchMove, { passive: false });
     window.addEventListener("touchend", handleTouchEnd);
 
     return () => {
+      window.removeEventListener("touchcancel", abortDrag);
       window.removeEventListener("touchstart", handleTouchStart);
       window.removeEventListener("touchmove", handleTouchMove);
       window.removeEventListener("touchend", handleTouchEnd);
@@ -1176,10 +1118,10 @@ export default function App() {
       <div
         ref={sidebarRef}
         className={`fixed inset-y-0 left-0 z-50 w-72 bg-gray-900 border-r border-gray-800 flex flex-col md:relative md:translate-x-0 ${
-          isInteracting
-            ? "transition-none"
-            : "transition-transform duration-300 ease-in-out " +
-              (isSidebarOpen ? "translate-x-0" : "-translate-x-full")
+          (isInteracting
+            ? "transition-none "
+            : "transition-transform duration-300 ease-in-out ") +
+          (isSidebarOpen ? "translate-x-0" : "-translate-x-full")
         }`}
       >
         {/* Content */}
