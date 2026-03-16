@@ -326,58 +326,117 @@ export default function App() {
     sectionId: null,
   });
 
+  const directionLockedRef = useRef(false);
+  const overlayRef = useRef(null);
   const sidebarRef = useRef(null);
   const touchStartRef = useRef({ x: 0, y: 0, time: 0 });
   const isDraggingRef = useRef(false);
   const sidebarWidth = 288; // 72rem in Tailwind = 288px
+  const [isInteracting, setIsInteracting] = useState(false);
+  const [forceUpdate, setForceUpdate] = useState(0);
 
   useEffect(() => {
     const handleTouchStart = (e) => {
-      if (window.innerWidth >= 768) return; // Disable on desktop
+      setIsInteracting(false);
+      if (window.innerWidth >= 768) return;
 
       const touch = e.touches[0];
-      // Trigger if swiping from the left edge (< 40px) OR if sidebar is already open
-      if (touch.clientX < 40 || isSidebarOpen) {
-        touchStartRef.current = {
-          x: touch.clientX,
-          y: touch.clientY,
-          time: Date.now(),
-        };
-        isDraggingRef.current = true;
+      touchStartRef.current = {
+        x: touch.clientX,
+        y: touch.clientY,
+        time: Date.now(),
+      };
+      isDraggingRef.current = true;
+      directionLockedRef.current = false;
 
-        if (sidebarRef.current) {
-          sidebarRef.current.style.transition = "none"; // Disable CSS transitions for 1:1 tracking
-        }
+      // IMPORTANT: Don't set pointer-events here yet.
+      // Wait until we are SURE it's a horizontal swipe.
+    };
+
+    const smoothReset = (shouldOpen) => {
+      isDraggingRef.current = false;
+      directionLockedRef.current = false;
+
+      if (sidebarRef.current && overlayRef.current) {
+        // Re-apply transitions manually for the final snap
+        const transition = "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)";
+        sidebarRef.current.style.transition = transition;
+        overlayRef.current.style.transition = transition;
+
+        // Set the target positions
+        sidebarRef.current.style.transform = shouldOpen
+          ? "translateX(0px)"
+          : `translateX(-100%)`;
+        overlayRef.current.style.opacity = shouldOpen ? "1" : "0";
+
+        // Wait for animation, then let React take over
+        setTimeout(() => {
+          setIsSidebarOpen(shouldOpen);
+          if (sidebarRef.current) {
+            sidebarRef.current.style.transform = "";
+            sidebarRef.current.style.transition = "";
+          }
+          if (overlayRef.current) {
+            overlayRef.current.style.opacity = "";
+            overlayRef.current.style.transition = "";
+            overlayRef.current.style.pointerEvents = shouldOpen
+              ? "auto"
+              : "none";
+          }
+        }, 300);
       }
     };
 
     const handleTouchMove = (e) => {
+      setIsInteracting(true);
       if (!isDraggingRef.current) return;
 
       const touch = e.touches[0];
       const deltaX = touch.clientX - touchStartRef.current.x;
       const deltaY = touch.clientY - touchStartRef.current.y;
 
-      // Abort if scrolling vertically intentionally
-      if (Math.abs(deltaY) > Math.abs(deltaX) && Math.abs(deltaY) > 10) {
-        isDraggingRef.current = false;
+      if (!directionLockedRef.current) {
+        const isHorizontal = Math.abs(deltaX) > Math.abs(deltaY) * 1.5;
+        if (Math.abs(deltaX) < 10) return;
+
+        if (!isHorizontal || (!isSidebarOpen && deltaX < 0)) {
+          smoothReset(isSidebarOpen);
+          return;
+        }
+        directionLockedRef.current = true;
+        setForceUpdate((prev) => prev + 1);
+      }
+
+      // --- NEW: REVERSE ABORT LOGIC ---
+      // If the sidebar is closed and we swipe right then back left past the start point:
+      if (!isSidebarOpen && deltaX < -10) {
+        smoothReset(false);
+        return;
+      }
+      // If the sidebar is open and we swipe left then back right past the start point:
+      if (isSidebarOpen && deltaX > 10) {
+        smoothReset(true);
         return;
       }
 
-      let translateX = isSidebarOpen ? deltaX : -sidebarWidth + deltaX;
-
-      // Overshoot logic: dampen the translation once it exceeds 0
-      if (translateX > 0) {
-        translateX = translateX * 0.15; // Resistance factor
+      if (e.cancelable) e.preventDefault();
+      if ((!isSidebarOpen && deltaX < -15) || (isSidebarOpen && deltaX > 15)) {
+        smoothReset(isSidebarOpen);
+        return;
       }
 
-      // Clamp bottom
-      if (translateX < -sidebarWidth) {
-        translateX = -sidebarWidth;
-      }
+      let currentPos = isSidebarOpen ? deltaX : -sidebarWidth + deltaX;
 
       if (sidebarRef.current) {
-        sidebarRef.current.style.transform = `translateX(${translateX}px)`;
+        sidebarRef.current.style.transform = `translateX(${currentPos}px)`;
+      }
+
+      if (overlayRef.current) {
+        const progress = (sidebarWidth + currentPos) / sidebarWidth;
+        overlayRef.current.style.opacity = progress.toString();
+        // Ensure overlay is clickable during the drag
+        overlayRef.current.style.pointerEvents =
+          progress > 0.05 ? "auto" : "none";
       }
     };
 
@@ -385,28 +444,60 @@ export default function App() {
       if (!isDraggingRef.current) return;
       isDraggingRef.current = false;
 
-      if (!sidebarRef.current) return;
-
       const touch = e.changedTouches[0];
       const deltaX = touch.clientX - touchStartRef.current.x;
       const deltaTime = Date.now() - touchStartRef.current.time;
       const velocity = Math.abs(deltaX / deltaTime);
 
-      // Re-enable smooth transition for the snap
-      sidebarRef.current.style.transition =
-        "transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)";
-      sidebarRef.current.style.transform = ""; // Clear inline style to let React/Tailwind take over
-
-      // Snap logic based on velocity or position threshold
+      let shouldOpen = isSidebarOpen;
       if (isSidebarOpen) {
-        if (deltaX < -50 || (deltaX < 0 && velocity > 0.5))
-          setIsSidebarOpen(false);
+        if (deltaX < -70 || (deltaX < 0 && velocity > 0.4)) shouldOpen = false;
       } else {
-        if (deltaX > 50 || (deltaX > 0 && velocity > 0.5))
-          setIsSidebarOpen(true);
+        if (deltaX > 70 || (deltaX > 0 && velocity > 0.4)) shouldOpen = true;
+      }
+
+      // Final Animation
+      const transitionStyle = "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)";
+      if (sidebarRef.current) {
+        sidebarRef.current.style.transition = transitionStyle;
+        sidebarRef.current.style.transform = shouldOpen
+          ? "translateX(0px)"
+          : `translateX(-100%)`;
+      }
+      if (overlayRef.current) {
+        overlayRef.current.style.transition = transitionStyle;
+        overlayRef.current.style.opacity = shouldOpen ? "1" : "0";
+      }
+
+      // Cleanup & Sync React State
+      setTimeout(() => {
+        setIsInteracting(false);
+        setIsSidebarOpen(shouldOpen);
+        if (sidebarRef.current) {
+          sidebarRef.current.style.transition = "";
+          sidebarRef.current.style.transform = "";
+        }
+        if (overlayRef.current) {
+          overlayRef.current.style.transition = "";
+          overlayRef.current.style.opacity = "";
+          // Reset pointer events based on final state
+          overlayRef.current.style.pointerEvents = shouldOpen ? "auto" : "none";
+        }
+      }, 300);
+    };
+
+    const handleTouchCancel = () => {
+      isDraggingRef.current = false;
+      if (isDraggingRef.current) {
+        smoothReset(isSidebarOpen);
+      }
+      if (overlayRef.current && !isSidebarOpen) {
+        overlayRef.current.style.pointerEvents = "none";
+        overlayRef.current.style.opacity = "0";
       }
     };
 
+    window.addEventListener("touchcancel", handleTouchCancel);
     window.addEventListener("touchstart", handleTouchStart, { passive: true });
     window.addEventListener("touchmove", handleTouchMove, { passive: false });
     window.addEventListener("touchend", handleTouchEnd);
@@ -1067,18 +1158,32 @@ export default function App() {
       </div>
 
       {/* Mobile Sidebar Overlay */}
-      {isSidebarOpen && (
-        <div
-          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 md:hidden"
-          onClick={() => setIsSidebarOpen(false)}
-        />
-      )}
+      <div
+        ref={overlayRef}
+        onClick={() => {
+          setIsSidebarOpen(false);
+          // Optional: Reset refs just in case
+          if (sidebarRef.current) sidebarRef.current.style.transform = "";
+        }}
+        className={`fixed inset-0 bg-black/60 backdrop-blur-sm z-40 md:hidden transition-opacity duration-300 ${
+          isSidebarOpen
+            ? "opacity-100 pointer-events-auto"
+            : "opacity-0 pointer-events-none"
+        }`}
+      />
 
-      {/* Responsive Sidebar */}
+      {/* Sidebar */}
       <div
         ref={sidebarRef}
-        className={`fixed inset-y-0 left-0 z-50 w-72 md:w-64 bg-gray-900 border-r border-gray-800  max-h-lvh flex flex-col shrink-0 overflow-y-auto transition-transform duration-300 md:relative md:translate-x-0 ${isSidebarOpen ? "translate-x-0" : "-translate-x-full"}`}
+        className={`fixed inset-y-0 left-0 z-50 w-72 bg-gray-900 border-r border-gray-800 flex flex-col md:relative md:translate-x-0 ${
+          isInteracting
+            ? "transition-none"
+            : "transition-transform duration-300 ease-in-out " +
+              (isSidebarOpen ? "translate-x-0" : "-translate-x-full")
+        }`}
       >
+        {/* Content */}
+
         <div className="p-6 border-b border-gray-800">
           <h1 className="text-2xl font-bold tracking-tighter text-gray-100 flex items-center gap-2">
             <button
