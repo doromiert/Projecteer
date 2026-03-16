@@ -1086,11 +1086,7 @@ export default function App() {
           onClick={() => setIsSidebarOpen(!isSidebarOpen)}
           className="p-1 text-gray-400 hover:text-white transition-colors"
         >
-          {isSidebarOpen ? (
-            <X className="w-6 h-6" />
-          ) : (
-            <Menu className="w-6 h-6" />
-          )}
+          <Menu className="w-6 h-6" />
         </button>
         <div className="flex items-center gap-3 font-bold text-gray-100">
           <TitleIcon className="w-5 h-5 text-emerald-500" />
