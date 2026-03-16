@@ -65,6 +65,7 @@ import {
   Coffee,
   MessageSquare,
   Menu,
+  FileIcon,
 } from "lucide-react";
 
 // Expanded Icon Library for the Picker
@@ -632,6 +633,15 @@ export default function App() {
     setIconPicker({ isOpen: false, sectionId: null });
   };
 
+  const newFile = () => {
+    const confirmed = window.confirm(
+      "Are you sure you want to create a new file?\n Unsaved changes will be lost.",
+    );
+
+    if (confirmed) {
+      setData(defaultData);
+    }
+  };
   const exportJSON = () => {
     const dataStr =
       "data:text/json;charset=utf-8," +
@@ -1204,7 +1214,14 @@ export default function App() {
             </button>
           )}
 
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-3 gap-2">
+            <button
+              onClick={newFile}
+              className="w-full flex items-center justify-center gap-1.5 bg-gray-800 border border-gray-700 hover:border-gray-500 hover:bg-gray-700 text-gray-300 px-2 py-2 rounded-md font-medium text-xs transition-colors"
+            >
+              <FileIcon className="w-3.5 h-3.5" /> New
+            </button>
+
             <button
               onClick={() => fileInputRef.current?.click()}
               className="w-full flex items-center justify-center gap-1.5 bg-gray-800 border border-gray-700 hover:border-gray-500 hover:bg-gray-700 text-gray-300 px-2 py-2 rounded-md font-medium text-xs transition-colors"
