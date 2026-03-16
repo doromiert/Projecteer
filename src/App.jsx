@@ -250,7 +250,7 @@ const EditableField = ({
         onChange={(e) => setTempVal(e.target.value)}
         onBlur={handleBlur}
         onKeyDown={handleKeyDown}
-        className={`${commonClasses} resize-y min-h-[80px] text-sm`}
+        className={`${commonClasses} resize-y min-h-50 text-sm`}
       />
     ) : (
       <input
