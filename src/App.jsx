@@ -1162,7 +1162,7 @@ export default function App() {
           </div>
         </div>
 
-        <nav className="flex-1 p-4 space-y-1">
+        <nav className="flex-1 p-4 overflow-y-scroll space-y-1">
           <button
             onClick={() => setActiveTabId("overview")}
             className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-colors ${
