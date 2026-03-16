@@ -817,7 +817,7 @@ export default function App() {
           />
         </div>
         {apiKey && (
-          <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity">
+          <div className="absolute top-4 right-4 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
             <button
               onClick={() =>
                 triggerTextGemini(
@@ -998,7 +998,7 @@ export default function App() {
                 </div>
 
                 {/* Item Controls */}
-                <div className="absolute top-4 right-4 flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                <div className="absolute top-4 right-4 flex items-center gap-2 md:opacity-0 group-hover:opacity-100 transition-opacity">
                   {apiKey && (
                     <button
                       onClick={() =>
